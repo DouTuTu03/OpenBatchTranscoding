@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.9", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # 内核零依赖，测试也只用标准库；不装任何东西就能跑
+      - name: 单元测试（标准库 unittest）
+        run: python -m unittest discover -s tests -t .
+
+      # 13 份真实字节语料，判定不符即以退出码 1 失败
+      - name: 编码判定回归
+        run: python scripts/make_samples.py
+
+      # 自举：这个仓库自己的源码必须过它自己的门禁
+      # 这一条同时验证了 ——expect / --eol 门禁在 3.9 与 3.13 上行为一致
+      - name: 自举门禁（源码必须 UTF-8 + LF）
+        shell: bash
+        run: |
+          export PYTHONPATH=src
+          python -m obt check src tests scripts .github \
+            README.md pyproject.toml uv.lock \
+            .editorconfig .gitattributes .gitignore \
+            --expect utf-8 --eol lf

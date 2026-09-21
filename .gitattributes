@@ -1,0 +1,30 @@
+# 这个仓库干的就是编码与行尾的活，所以它自己的行尾必须先说清楚。
+# .editorconfig 声明了 end_of_line = lf，这里必须给出一致的规定，
+# 否则 git 会按 core.autocrlf 把工作区文件换回 CRLF（Windows 默认如此），
+# 出现"工具自己都不符合 --eol lf 门禁"的荒唐局面。
+#
+# 规定：所有文本文件在仓库里一律存 LF，检出到工作区也是 LF。
+# 只有明确标为二进制的文件不受此影响。
+
+* text=auto eol=lf
+
+# 明确二进制，避免 git 去做行尾转换或 diff
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.zip  binary
+*.gz   binary
+*.7z   binary
+*.exe  binary
+*.dll  binary
+*.bin  binary
+
+# C# 源码在这个生态里常是 GBK/UTF-8 混存的，但在本仓库内只作为测试语料生成，
+# 不落盘成受控文件，这里不做特例。
+
+# 补丁与 diff 保持可读
+*.diff text
+*.patch text

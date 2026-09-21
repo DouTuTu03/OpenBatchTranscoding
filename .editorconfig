@@ -1,0 +1,23 @@
+# 本仓库是关于"编码统一"的工具，自身必须以身作则：源码统一 UTF-8（无 BOM）。
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+
+[*.py]
+indent_size = 4
+max_line_length = 110
+
+[*.{toml,yml,yaml,json}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+# 测试与示例里会刻意生成非 UTF-8 的字节样本，这些目录不参与本仓库的编码门禁。
+[samples/**]
+charset = unset

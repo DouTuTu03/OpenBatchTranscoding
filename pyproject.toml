@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openbatchtranscoding"
+version = "0.1.0"
+description = "编码嗅探与批量转码：零依赖、可审计、JSON 可编排的 CLI 内核"
+readme = "README.md"
+requires-python = ">=3.9"
+keywords = ["encoding", "charset", "gbk", "gb18030", "utf-8", "transcode", "cli"]
+classifiers = [
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Topic :: Text Processing :: Filters",
+]
+# 内核只用标准库：GBK/GB18030/Big5/Shift_JIS/EUC-JP/EUC-KR/CP1252 全是 Python 自带的 codec。
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+obt = "obt.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
