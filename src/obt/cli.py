@@ -63,11 +63,36 @@ def parse_size(text) -> int:
         raise ValueError(f"无法解析大小：{text!r}（示例：512k / 10MB / 1048576）") from None
 
 
+def _read_stdin_paths() -> list:
+    """从标准输入读路径清单，每行一个。
+
+    典型用法：``git ls-files | obt check --stdin --expect utf-8 --eol lf``——
+    门禁的输入直接来自版本控制，不必手工维护路径列表（加文件忘了同步这种事就不会发生）。
+    空行与以 ``#`` 开头的行会被忽略，方便在脚本里夹注释。
+
+    读之前 :func:`render.configure_stdio` 已经把管道 stdin 调成 UTF-8 了，
+    所以带中文的路径不会在 Windows 上被按代码页读坏。
+    """
+    if sys.stdin is None:
+        return []
+    paths = []
+    for line in sys.stdin:
+        line = line.strip()
+        if line and not line.startswith("#"):
+            paths.append(line)
+    return paths
+
+
 def _collect(args):
-    """把命令行给的路径展开成文件列表。"""
+    """把命令行给的路径（外加 ``--stdin`` 读到的那批）展开成文件列表。"""
+    paths = list(args.paths)
+    if getattr(args, "stdin", False):
+        paths.extend(_read_stdin_paths())
+    if not paths:
+        return []
     excludes = tuple(DEFAULT_EXCLUDES) + tuple(getattr(args, "exclude", None) or ())
     return iter_files(
-        args.paths,
+        paths,
         recursive=not getattr(args, "no_recursive", False),
         includes=tuple(getattr(args, "include", None) or ()),
         excludes=excludes,
@@ -578,6 +603,9 @@ def _add_common(p, *, suppress: bool) -> None:
 
 
 def _add_scan_opts(p) -> None:
+    p.add_argument("--stdin", action="store_true",
+                   help="额外从标准输入读路径清单（每行一个）："
+                        "git ls-files | obt check --stdin --expect utf-8")
     p.add_argument("--no-recursive", action="store_true", help="不递归子目录")
     p.add_argument("--include", action="append", metavar="GLOB",
                    help="只处理匹配的文件（可多次，如 --include '*.cs'）")
@@ -616,7 +644,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", metavar="<命令>")
 
     p = sub.add_parser("sniff", parents=[common], help="嗅探文件/目录的编码并给出依据")
-    p.add_argument("paths", nargs="+", metavar="PATH", help="文件或目录")
+    p.add_argument("paths", nargs="*", metavar="PATH",
+                   help="文件或目录；也可以只给 --stdin 从管道读")
     p.add_argument("--from", dest="from_enc", metavar="ENC",
                    help="跳过自动嗅探，强制按该编码解读")
     p.add_argument("--explain", action="store_true", help="打印候选编码的打分明细")
@@ -629,7 +658,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_sniff)
 
     p = sub.add_parser("scan", parents=[common], help="批量统计编码分布，用于摸底与 CI")
-    p.add_argument("paths", nargs="+", metavar="PATH")
+    p.add_argument("paths", nargs="*", metavar="PATH")
     p.add_argument("--fail-on", action="append", metavar="ENC")
     p.add_argument("--min-confidence", type=float, default=0.0, metavar="F",
                    help="低于该置信度的文件列入「需要关注」")
@@ -637,7 +666,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_scan)
 
     p = sub.add_parser("convert", parents=[common], help="批量转码（先出计划，再落地）")
-    p.add_argument("paths", nargs="+", metavar="PATH")
+    p.add_argument("paths", nargs="*", metavar="PATH")
     p.add_argument("-t", "--to", required=True, metavar="ENC",
                    help="目标编码，如 utf-8 / utf-8-bom / gbk / big5")
     p.add_argument("--from", dest="from_enc", metavar="ENC",
@@ -664,7 +693,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_convert)
 
     p = sub.add_parser("check", parents=[common], help="CI 门禁：要求全部文件符合指定编码")
-    p.add_argument("paths", nargs="+", metavar="PATH")
+    p.add_argument("paths", nargs="*", metavar="PATH")
     p.add_argument("--expect", required=True, metavar="ENC",
                    help="期望编码；写成 utf-8-bom 会连带要求 BOM")
     p.add_argument("--eol", choices=EOL_CHOICES, default="keep",

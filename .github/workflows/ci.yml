@@ -33,13 +33,13 @@ jobs:
       - name: 编码判定回归
         run: python scripts/make_samples.py
 
-      # 自举：这个仓库自己的源码必须过它自己的门禁
+      # 自举：这个仓库自己的源码必须过它自己的门禁。
+      # 输入直接来自版本控制（--stdin），所以新增文件不会漏检，也不必维护路径列表。
+      # core.quotepath=false 避免非 ASCII 路径被转义成八进制。
       # 这一条同时验证了 ——expect / --eol 门禁在 3.9 与 3.13 上行为一致
       - name: 自举门禁（源码必须 UTF-8 + LF）
         shell: bash
         run: |
           export PYTHONPATH=src
-          python -m obt check src tests scripts .github \
-            README.md pyproject.toml uv.lock \
-            .editorconfig .gitattributes .gitignore \
-            --expect utf-8 --eol lf
+          git -c core.quotepath=false ls-files \
+            | python -m obt check --stdin --expect utf-8 --eol lf

@@ -48,7 +48,16 @@ def configure_stdio() -> None:
 
     两种情况都留 ``errors="replace"`` 兜底：装不下的字符退化成 ``?``，
     但绝不因为编码问题把整条命令带崩。
+
+    标准输入同理：管道给进来的一律按 UTF-8 读。``--stdin`` 收的是路径清单，
+    在 Windows 上按代码页读会把中文路径读坏成"文件不存在"。
     """
+    try:
+        if sys.stdin is not None and not sys.stdin.isatty():
+            sys.stdin.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:                # StringIO / 已关闭的 stdin，跳过即可
+        pass
+
     for stream in (sys.stdout, sys.stderr):
         try:
             interactive = stream.isatty()

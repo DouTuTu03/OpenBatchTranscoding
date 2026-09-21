@@ -18,8 +18,11 @@ from pathlib import Path
 from tests import ROOT, SRC
 from tests.fixtures import CN, MIXED, write_all
 
+# 模拟 GitHub Actions 的 windows runner：stdout 是 cp1252，中文根本编码不了。
+LEGACY_ENV = {"PYTHONIOENCODING": "cp1252", "PYTHONUTF8": "0"}
 
-def run_obt(*args, cwd=None, expect=None, env_extra=None):
+
+def run_obt(*args, cwd=None, expect=None, env_extra=None, stdin_text=None):
     env = dict(os.environ)
     env["PYTHONPATH"] = str(SRC)
     # 刻意清掉这两个变量：stdout 被 capture_output 接成管道，CLI 必须自己
@@ -30,13 +33,15 @@ def run_obt(*args, cwd=None, expect=None, env_extra=None):
     env.pop("PYTHONUTF8", None)
     if env_extra:
         env.update(env_extra)
+    # stdin 默认接 DEVNULL：非交互环境就该走"必须显式 --yes"的分支，
+    # 也让测试结果不依赖运行者的终端。给了 stdin_text 就改成管道，
+    # 喂给 --stdin 当路径清单。
+    feed = ({"stdin": subprocess.DEVNULL} if stdin_text is None
+            else {"input": stdin_text})
     proc = subprocess.run(
         [sys.executable, "-m", "obt", *args],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
-        # stdin 接 DEVNULL：非交互环境就该走"必须显式 --yes"的分支，
-        # 也让测试结果不依赖运行者的终端
-        stdin=subprocess.DEVNULL,
-        cwd=str(cwd) if cwd else None, env=env,
+        cwd=str(cwd) if cwd else None, env=env, **feed,
     )
     if expect is not None:
         assert proc.returncode == expect, (
@@ -295,7 +300,7 @@ class TestLegacyConsole(unittest.TestCase):
     显式把这个条件造出来，否则"本地全绿、CI 全红"会再来一次。
     """
 
-    LEGACY = {"PYTHONIOENCODING": "cp1252", "PYTHONUTF8": "0"}
+    LEGACY = LEGACY_ENV
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -345,6 +350,53 @@ class TestLegacyConsole(unittest.TestCase):
         self.assertEqual(proc.returncode, 0,
                          f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}")
         self.assertIn("判定不符 0 个", proc.stdout)
+
+
+class TestStdin(CliCase):
+    """``--stdin``：门禁的输入直接来自版本控制，不再需要手工维护路径列表。
+
+    实际用法：``git -c core.quotepath=false ls-files | obt check --stdin ...``
+    （``core.quotepath=false`` 避免非 ASCII 路径被转义成八进制）。
+    这也是 .github/workflows/ci.yml 里自举门禁的写法。
+    """
+
+    def test_check_reads_paths_from_stdin(self):
+        proc = run_obt("check", "--stdin", "--expect", "utf-8-bom", cwd=self.dir,
+                       stdin_text="samples/gbk_legacy.cs\n", expect=1)
+        self.assertIn("gbk_legacy.cs", proc.stdout)
+        self.assertIn("缺少 BOM", proc.stdout)
+
+    def test_clean_list_from_stdin_passes(self):
+        run_obt("check", "--stdin", "--expect", "utf-8-bom", cwd=self.dir,
+                stdin_text="samples/utf8_bom_crlf.cs\n", expect=0)
+
+    def test_stdin_combines_with_explicit_paths(self):
+        payload = json.loads(run_obt(
+            "scan", "samples/gbk_legacy.cs", "--stdin", "--json", cwd=self.dir,
+            stdin_text="samples/big5_traditional.txt\n", expect=0).stdout)
+        self.assertEqual(payload["summary"]["files"], 2)
+
+    def test_stdin_skips_blank_lines_and_comments(self):
+        payload = json.loads(run_obt(
+            "scan", "--stdin", "--json", cwd=self.dir,
+            stdin_text="# 只关心这两个\n\nsamples/gbk_legacy.cs\n\n"
+                       "samples/big5_traditional.txt\n\n", expect=0).stdout)
+        self.assertEqual(payload["summary"]["files"], 2)
+
+    def test_empty_stdin_is_a_usage_error(self):
+        proc = run_obt("sniff", "--stdin", cwd=self.dir, stdin_text="", expect=2)
+        self.assertIn("没有找到", proc.stderr)
+
+    def test_chinese_paths_from_stdin_survive_legacy_console(self):
+        """管道 stdin 必须按 UTF-8 读，否则中文路径在 Windows 上会变成"文件不存在"。"""
+        (self.samples / "中文文件名.txt").write_bytes(
+            codecs.BOM_UTF8 + "试验\n".encode("utf-8"))
+        payload = json.loads(run_obt(
+            "check", "--stdin", "--expect", "utf-8-bom", "--json", cwd=self.dir,
+            env_extra=LEGACY_ENV, stdin_text="samples/中文文件名.txt\n",
+            expect=0).stdout)
+        self.assertEqual([Path(i["path"]).name for i in payload["items"]],
+                         ["中文文件名.txt"])
 
 
 if __name__ == "__main__":

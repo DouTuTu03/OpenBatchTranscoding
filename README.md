@@ -153,6 +153,18 @@ Writing `utf-8-bom` also demands a BOM; writing `utf-8` looks at the encoding on
 
 写成 `utf-8-bom` 会连带要求 BOM；写 `utf-8` 则只看编码、不管 BOM。
 
+The path list can also come from a pipe:
+
+路径清单也可以从管道来：
+
+```bash
+git -c core.quotepath=false ls-files | obt check --stdin --expect utf-8 --eol lf
+```
+
+`--stdin` reads one path per line (blank lines and `#` comments are skipped), so the gate's input comes straight from version control — a newly added file cannot be forgotten in a hand-maintained list. `core.quotepath=false` keeps non-ASCII paths from being escaped into octal.
+
+`--stdin` 每行读一个路径（空行与 `#` 注释会跳过），于是门禁的输入直接来自版本控制——新加的文件不会被漏在手工维护的路径列表之外。`core.quotepath=false` 避免非 ASCII 路径被转义成八进制。
+
 ### `encodings` — supported encodings and aliases / 支持的编码与别名
 
 ---
@@ -285,16 +297,16 @@ The per-candidate `candidates` detail is only included with `sniff --explain`; `
   **判定给的是概率，不是事实。** 分差小于 0.08 会明确标注"存在结构性歧义"，并建议抽样核对。样本只有一个汉字两个字节时，工具会给出结论但把置信度压到 0.65 以下并标注歧义——不假装自己知道。
 - **`struct` is a heuristic, not a standard.** It is designed around the range facts of GB2312 / Big5 / JIS and is effective for those codecs; for an obscure codec that is not covered, it degrades to "everything else failed".
   **`struct` 是启发式，不是标准。** 它按 GB2312 / Big5 / JIS 的分区事实设计，对这些编码有效；对没收录的冷门编码只能退化成"别的都不成立"。
-- **It does not read `.gitignore`.** Ignore rules are a built-in directory-name allowlist plus `--include/--exclude`. To follow `.gitignore`, feed it `git ls-files`.
-  **不读 `.gitignore`。** 忽略规则是内置的目录名白名单 + `--include/--exclude`。要按 `.gitignore` 走，用 `git ls-files` 喂给它。
+- **It does not read `.gitignore`.** Ignore rules are a built-in directory-name allowlist plus `--include/--exclude`. To follow version control instead, pipe `git ls-files` into `--stdin`; to apply `.gitignore` yourself, use `git ls-files -co --exclude-standard`.
+  **不读 `.gitignore`。** 忽略规则是内置的目录名白名单 + `--include/--exclude`。想按版本控制走，把 `git ls-files` 接进 `--stdin`；想自己按 `.gitignore` 走，用 `git ls-files -co --exclude-standard`。
 
 ---
 
 ## Development and tests / 开发与测试
 
 ```bash
-python -m unittest discover -s tests -t .        # 158 cases, stdlib only, no install needed
-                                                 # 158 个用例，纯标准库，无需安装
+python -m unittest discover -s tests -t .        # 168 cases, stdlib only, no install needed
+                                                 # 168 个用例，纯标准库，无需安装
 python scripts/make_samples.py                   # build samples/ and self-check it
                                                  # 生成 samples/ 编码试验场并自检
 ```
@@ -336,15 +348,13 @@ The only thing that errors when scanning the whole repo with the command above i
 上面这条扫描整个仓库时，唯一会报错的是 `samples/`——那是刻意装满 GBK / Big5 / Shift_JIS / CP1252 字节的试验场，本来就"不合规"，且已在 `.gitignore` 中排除。只查受控文件：
 
 ```bash
-PYTHONPATH=src python -m obt check src tests scripts .github \
-  README.md pyproject.toml uv.lock \
-  .editorconfig .gitattributes .gitignore \
-  --expect utf-8 --eol lf
+git -c core.quotepath=false ls-files \
+  | PYTHONPATH=src python -m obt check --stdin --expect utf-8 --eol lf
 ```
 
-That command is the CI self-bootstrap gate (see `.github/workflows/ci.yml`): the tool's own source, tests, scripts, the workflow itself and all config files must be judged UTF-8 + LF by the tool itself. If any of them fail, `check` exits 1.
+That command is the CI self-bootstrap gate (see `.github/workflows/ci.yml`): the tool's own source, tests, scripts, the workflow itself and all config files must be judged UTF-8 + LF by the tool itself. If any of them fail, `check` exits 1. Feeding it `git ls-files` instead of a hand-written path list means the gate follows the repository, so a newly added file is checked automatically.
 
-这条命令就是 CI 的自举门禁（见 `.github/workflows/ci.yml`）：工具源码、测试、脚本、workflow 自身，以及所有配置文件，都必须由本工具自己判定为 UTF-8 + LF。判定不符时 `check` 以退出码 1 失败。
+这条命令就是 CI 的自举门禁（见 `.github/workflows/ci.yml`）：工具源码、测试、脚本、workflow 自身，以及所有配置文件，都必须由本工具自己判定为 UTF-8 + LF。判定不符时 `check` 以退出码 1 失败。喂给它 `git ls-files` 而不是手写路径列表，门禁就跟着仓库走——新加的文件会自动被检查。
 
 You can also check the other way round, asking git what line endings it actually stored:
 
