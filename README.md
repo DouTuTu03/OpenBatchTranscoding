@@ -232,6 +232,24 @@ Verification happens *before* the replacement, so when verification fails the or
 
 ---
 
+## Output encoding: pipes get real UTF-8 / 输出编码：管道里给真 UTF-8
+
+`obt` looks at where its output is going before it prints anything:
+
+- **Piped or redirected** (`| jq`, `> report.txt`, CI logs): output is forced to **UTF-8**, whatever the console code page happens to be. JSON is the machine-facing contract, and replacing Chinese file names or evidence with `?` just to please a legacy code page would be silent data corruption.
+- **Interactive console**: keeps the console's own encoding (cp936 on a Chinese Windows, so Chinese still displays), and only relaxes `errors` to `replace`. A character the code page cannot represent degrades to `?` — it never raises `UnicodeEncodeError` and kills the command.
+
+This rule came out of a real failure: on GitHub Actions `windows-latest` stdout is cp1252, so printing Chinese crashed with exit code 1 — which collided with the exit code this tool uses to mean "a file does not meet expectations".
+
+`obt` 在打印之前会先看输出去哪，据此决定编码策略：
+
+- **管道 / 重定向**（`| jq`、`> report.txt`、CI 日志）：强制输出 **UTF-8**，不管控制台代码页是什么。因为 JSON 是给机器消费的契约——为了迁就老代码页把中文文件名与判定证据换成 `?`，等于静默损坏数据。
+- **交互式控制台**：保留控制台自己的编码（中文 Windows 上是 cp936，中文照常显示），只把 `errors` 放宽成 `replace`。代码页装不下的字符退化成 `?`，但绝不抛 `UnicodeEncodeError` 把整条命令带崩。
+
+这条规则是踩出来的：GitHub Actions 的 `windows-latest` 上 stdout 是 cp1252，打印中文直接崩、退出码 1——而退出码 1 恰好是本工具用来表示"有文件不符合预期"的信号，两者撞在一起极难排查。
+
+---
+
 ## The JSON contract / JSON 契约
 
 Every command supports `--json` and emits a stable structure for programs to consume:

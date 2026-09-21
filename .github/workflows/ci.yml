@@ -14,6 +14,10 @@ jobs:
         os: [ubuntu-latest, windows-latest]
         python-version: ["3.9", "3.13"]
 
+    # 刻意不设 PYTHONUTF8 / PYTHONIOENCODING：windows-latest 的 stdout 是
+    # cp1252，正好持续验证"非 UTF-8 控制台上输出不崩、管道里仍是真 UTF-8"
+    # 这条约束（tests/test_cli.py 的 TestLegacyConsole 也覆盖它）。
+    # 设成 UTF-8 能让 CI 立刻变绿，但会把这个类别的 bug 永久遮住。
     steps:
       - uses: actions/checkout@v4
 

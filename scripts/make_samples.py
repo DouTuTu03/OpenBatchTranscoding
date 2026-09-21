@@ -24,6 +24,7 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT))                 # 让 tests 包可被导入
 
 from obt.core import detect                    # noqa: E402
+from obt.render import configure_stdio         # noqa: E402
 from tests.fixtures import corpus, matches     # noqa: E402
 
 OUT = ROOT / "samples"
@@ -63,4 +64,8 @@ def report(items: list) -> int:
 
 
 if __name__ == "__main__":
+    # 对照表里全是中文。GitHub Actions 的 windows-latest 上 stdout 是 cp1252，
+    # 不先调这一步的话 print 直接 UnicodeEncodeError、退出码 1——而"退出码 1"
+    # 恰好是脚本用来表示"判定不符"的信号，两者会撞车，非常难查。
+    configure_stdio()
     sys.exit(report(build()))

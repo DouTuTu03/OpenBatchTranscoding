@@ -33,6 +33,36 @@ MARK_OK = "[OK]"
 MARK_BAD = "[!!]"
 
 
+def configure_stdio() -> None:
+    """让标准输出/错误在"输出编码装不下内容"时也不崩。
+
+    分两种情况，因为输出两头要的东西不一样：
+
+    - **管道 / 重定向**（不是终端）：一律改成 UTF-8。这一头接的是机器——
+      CI 日志、``| jq``、``> report.txt``、将来的图形界面。UTF-8 是它们的
+      默认语言；若迁就控制台代码页把中文替换成 ``?``，``--json`` 里的文件名
+      和判定证据就被静默改烂了。这一条是踩出来的：GitHub Actions 的
+      windows-latest 上 stdout 是 cp1252，脚本打印中文直接 UnicodeEncodeError。
+    - **交互式控制台**：保留控制台自己的编码（中文 Windows 上是 cp936，
+      中文能正常显示），只把 ``errors`` 放宽。
+
+    两种情况都留 ``errors="replace"`` 兜底：装不下的字符退化成 ``?``，
+    但绝不因为编码问题把整条命令带崩。
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            interactive = stream.isatty()
+        except Exception:            # 被替换过的流未必实现 isatty
+            interactive = False
+        try:
+            if interactive:
+                stream.reconfigure(errors="replace")
+            else:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:            # StringIO 这类没有 reconfigure，跳过即可
+            pass
+
+
 class Palette:
     """颜色开关。非 TTY / --color never / --json 时全部退化为空串。"""
 

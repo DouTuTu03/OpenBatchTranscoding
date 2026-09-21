@@ -20,8 +20,8 @@ from .core import (
     resolve_target, DEFAULT_EXCLUDES,
 )
 from .render import (
-    MARK_BAD, MARK_CONVERT, MARK_ERROR, MARK_OK, MARK_SKIP, bar, heading,
-    human_size, make_palette, percent, section, table,
+    MARK_BAD, MARK_CONVERT, MARK_ERROR, MARK_OK, MARK_SKIP, bar, configure_stdio,
+    heading, human_size, make_palette, percent, section, table,
 )
 
 EXIT_OK = 0
@@ -681,12 +681,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv=None) -> int:
-    # 重定向到文件时，locale 编码可能表示不了某些字符；宁可显示成 ? 也不要崩
-    for stream in (sys.stdout, sys.stderr):
-        try:
-            stream.reconfigure(errors="replace")
-        except Exception:
-            pass
+    # 输出编码策略见 render.configure_stdio：管道给真 UTF-8（JSON 契约不能被
+    # 替换成 ?），交互式控制台保留原编码但不再抛 UnicodeEncodeError。
+    configure_stdio()
 
     parser = build_parser()
     args = parser.parse_args(argv)

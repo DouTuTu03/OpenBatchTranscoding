@@ -15,14 +15,21 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests import SRC
+from tests import ROOT, SRC
 from tests.fixtures import CN, MIXED, write_all
 
 
-def run_obt(*args, cwd=None, expect=None):
+def run_obt(*args, cwd=None, expect=None, env_extra=None):
     env = dict(os.environ)
     env["PYTHONPATH"] = str(SRC)
-    env["PYTHONIOENCODING"] = "utf-8"
+    # 刻意清掉这两个变量：stdout 被 capture_output 接成管道，CLI 必须自己
+    # 保证管道里输出的是 UTF-8。留着 PYTHONUTF8=1（本机开发环境就有）会把
+    # "输出被降级成 ?" 这类问题盖住——CI 的 windows-latest 是 cp1252，
+    # 那才是真实条件，见 TestLegacyConsole。
+    env.pop("PYTHONIOENCODING", None)
+    env.pop("PYTHONUTF8", None)
+    if env_extra:
+        env.update(env_extra)
     proc = subprocess.run(
         [sys.executable, "-m", "obt", *args],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
@@ -278,6 +285,66 @@ class TestInvariants(unittest.TestCase):
                 name = Path(item["path"]).name
                 self.assertIn(name, human)
                 self.assertIn(item["encoding"], human)
+
+
+class TestLegacyConsole(unittest.TestCase):
+    """非 UTF-8 控制台下，输出不允许崩，也不允许被替换成 ``?``。
+
+    GitHub Actions 的 windows-latest 上 stdout 是 cp1252，中文根本编码不了。
+    本机开发环境开着 PYTHONUTF8=1，所以这个问题在本机永远看不见——必须
+    显式把这个条件造出来，否则"本地全绿、CI 全红"会再来一次。
+    """
+
+    LEGACY = {"PYTHONIOENCODING": "cp1252", "PYTHONUTF8": "0"}
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self._tmp.name)
+        write_all(self.dir / "samples")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_help_prints_real_chinese(self):
+        proc = run_obt("--help", env_extra=self.LEGACY, expect=0)
+        self.assertIn("编码嗅探与批量转码", proc.stdout)
+
+    def test_json_contract_is_not_replaced_with_question_marks(self):
+        proc = run_obt("sniff", "samples", "--json", cwd=self.dir,
+                       env_extra=self.LEGACY, expect=0)
+        payload = json.loads(proc.stdout)
+        item = next(i for i in payload["items"]
+                    if Path(i["path"]).name == "gbk_legacy.cs")
+        evidence = "\n".join(item["evidence"])
+        # 若走了 errors="replace"，这里会全是 ?，下面这条就匹配不上
+        self.assertRegex(evidence, r"[\u4e00-\u9fff]")
+
+    def test_human_report_prints_real_chinese(self):
+        proc = run_obt("sniff", "samples", "--color", "never",
+                       cwd=self.dir, env_extra=self.LEGACY, expect=0)
+        self.assertIn("嗅探", proc.stdout)
+        self.assertIn("判定", proc.stdout)
+
+    def test_sample_script_survives_legacy_console(self):
+        """CI 就是死在这一步：windows-latest 上 make_samples.py 退出码 1。
+
+        而"退出码 1"恰好是脚本用来表示"判定不符"的信号，两者撞车极难查。
+        脚本会把样本重新生成到仓库根的 samples/——那是被 .gitignore 排除的
+        试验场，CI 里本来也会跑同一条命令。
+        """
+        env = dict(os.environ)
+        env["PYTHONPATH"] = str(SRC)
+        env.pop("PYTHONIOENCODING", None)
+        env.pop("PYTHONUTF8", None)
+        env.update(self.LEGACY)
+        proc = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "make_samples.py")],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            cwd=str(ROOT), env=env,
+        )
+        self.assertEqual(proc.returncode, 0,
+                         f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}")
+        self.assertIn("判定不符 0 个", proc.stdout)
 
 
 if __name__ == "__main__":
