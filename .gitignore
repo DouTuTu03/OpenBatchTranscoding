@@ -23,6 +23,7 @@ Thumbs.db
 .mypy_cache/
 .ruff_cache/
 .coverage
+.workbuddy
 htmlcov/
 
 # 运行 scripts/make_samples.py 生成的"编码试验场"，不入库
