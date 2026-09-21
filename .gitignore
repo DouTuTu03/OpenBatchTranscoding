@@ -23,6 +23,8 @@ Thumbs.db
 .mypy_cache/
 .ruff_cache/
 .coverage
+ui/node_modules/
+ui/dist/
 .workbuddy
 htmlcov/
 

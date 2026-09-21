@@ -75,17 +75,92 @@ Zero dependencies — Python standard library only (`gbk / gb18030 / big5 / shif
 
 零依赖，只用 Python 标准库（`gbk / gb18030 / big5 / shift_jis / euc_jp / euc_kr / cp1252` 都是 Python 自带的 codec，不需要联网、不需要装包）：
 
-```bash
-# run without installing / 免安装直接跑
-PYTHONPATH=src python -m obt sniff .
+Run it without installing. Note the env var sits **inline, before the command** — that form is bash-specific:
 
-# or install it as a command / 或者装成命令
-pip install -e .          # afterwards just use `obt` / 之后直接用 obt
+免安装直接跑。注意环境变量是**写在命令前面、同一行**的——**这个写法只有 bash 认**：
+
+```bash
+# bash / zsh
+PYTHONPATH=src python -m obt sniff .
 ```
 
-Requires Python ≥ 3.9.
+```powershell
+# PowerShell — the same one-liner will fail with "not recognized as a cmdlet";
+# set the variable on its own line first.
+# PowerShell 下同一行写法会报 "not recognized as a cmdlet"，要先把变量单独设好。
+$env:PYTHONPATH = "src"
+python -m obt sniff .
 
-需要 Python ≥ 3.9。
+# The variable lasts for the whole window, so you only do this once.
+# 变量在**当前窗口内一直有效**，一个窗口设一次就够了。
+```
+
+```bat
+:: cmd.exe
+set "PYTHONPATH=src"
+python -m obt sniff .
+```
+
+Installing sidesteps the shell difference entirely — `obt` becomes a real command and `PYTHONPATH` stops mattering:
+
+装成命令就完全绕开了这个差异——`obt` 成为真命令，`PYTHONPATH` 从此与它无关：
+
+```bash
+pip install -e .          # afterwards just use `obt` / 之后直接用 obt
+obt sniff samples/
+```
+
+Requires Python ≥ 3.9. Verified on bash, and on Windows PowerShell 5.1 with Python 3.12.
+
+需要 Python ≥ 3.9。已在 bash 与 Windows PowerShell 5.1 + Python 3.12 上实测。
+
+### Vue terminal UI / Vue 终端界面
+
+The interactive full-screen interface lives in `ui/`. It is built with Vue 3 and
+`@vue-tui/runtime`; starting it automatically starts a local Python JSONL backend,
+so the terminal is owned by the UI while the existing core remains the only place
+that reads, detects, plans, and writes files.
+
+全屏交互界面在 `ui/`，使用 Vue 3 与 `@vue-tui/runtime`。启动界面时会自动拉起本地
+Python JSONL 后端：终端由前端独占，读文件、判定、出计划和写盘仍只由现有内核负责。
+
+```powershell
+# First time / 首次安装前端依赖
+cd ui
+npm install
+npm run build
+
+# Starts Vue TUI and its Python backend together / 前后端一起启动
+npm run start
+
+# Or return to the project root and use the Python command / 或回到项目根目录
+cd ..
+$env:PYTHONPATH = "src"
+python -m obt tui
+```
+
+Use `npm run dev` during development; it runs the terminal UI with Vue hot reload.
+In the conversion page, `Enter` first produces a plan. Only a subsequent `Y`
+confirmation writes files; `Esc` cancels the write.
+
+开发时使用 `npm run dev`，终端界面支持 Vue 热更新。转码页按 `Enter` 只生成计划；随后
+必须按 `Y` 明确确认才写盘，`Esc` 取消写盘。
+
+The TUI accepts normal terminal paste events and also supports `Ctrl+V` to paste
+the system clipboard into the active field. `Ctrl+C` copies the current form and
+visible result rows to the system clipboard; use `q` to exit the TUI.
+
+界面支持终端原生粘贴，也支持用 `Ctrl+V` 把系统剪贴板粘到当前字段。`Ctrl+C`
+会把当前表单与可见结果复制到系统剪贴板；退出请使用 `q`。
+
+By default the TUI is in command mode: press `1`–`4` to choose a function (for
+example, `2` opens Scan). Press `Tab` to enter field-editing mode; while editing,
+`Tab` moves to the next field, `Enter` runs the command, and `Esc` returns to
+command mode.
+
+界面默认处于功能选择状态：按 `1`–`4` 选择功能（例如 `2` 是扫描）。按 `Tab`
+进入字段编辑；编辑时再按 `Tab` 切换字段，`Enter` 执行，`Esc` 返回功能选择状态。
+若正在编辑字段，也可按 `F1`–`F4` 直接切换功能，或按 `Shift+Tab` / `Esc` 先返回功能选择。
 
 ---
 
@@ -303,6 +378,10 @@ The per-candidate `candidates` detail is only included with `sniff --explain`; `
 ---
 
 ## Development and tests / 开发与测试
+
+The shell snippets below are bash. On PowerShell, set `$env:PYTHONPATH = "src"` once in the window first (see "Install and run" above).
+
+下面的命令按 bash 写。PowerShell 用户先在当前窗口设一次 `$env:PYTHONPATH = "src"`（见上面的"安装与运行"）。
 
 ```bash
 python -m unittest discover -s tests -t .        # 168 cases, stdlib only, no install needed

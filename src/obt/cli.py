@@ -9,6 +9,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -587,6 +590,31 @@ def cmd_encodings(args) -> int:
     return EXIT_OK
 
 
+# ---------------------------------------------------------------- Vue TUI
+
+
+def cmd_tui(args) -> int:
+    """启动 Vue TUI；Node 前端会自行拉起 JSONL Python 后端。"""
+    if not (getattr(sys.stdin, "isatty", lambda: False)()
+            and getattr(sys.stdout, "isatty", lambda: False)()):
+        return _err("Vue TUI 必须在交互式终端中运行，不能通过管道或重定向启动")
+    node = shutil.which("node")
+    if not node:
+        return _err("Vue TUI 需要 Node.js 22+；请安装 Node 后重试")
+    root = Path(__file__).resolve().parents[2]
+    entry = root / "ui" / "dist" / "main.mjs"
+    if not entry.is_file():
+        return _err("Vue TUI 尚未构建；请先执行：cd ui && npm install && npm run build")
+    env = dict(os.environ)
+    env["OBT_PYTHON"] = sys.executable
+    # 源码运行时保证后端能 import obt；已安装的 wheel 不受此变量影响。
+    env["PYTHONPATH"] = str(root / "src")
+    try:
+        return subprocess.call([node, str(entry)], cwd=str(root / "ui"), env=env)
+    except OSError as exc:
+        return _err(f"无法启动 Vue TUI：{exc}")
+
+
 # ---------------------------------------------------------------- 参数解析
 
 
@@ -705,6 +733,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("encodings", parents=[common], help="列出支持的编码与别名")
     p.set_defaults(func=cmd_encodings)
+
+    p = sub.add_parser("tui", help="启动 Vue 终端界面（需先在 ui/ 构建）")
+    p.set_defaults(func=cmd_tui)
 
     return parser
 
